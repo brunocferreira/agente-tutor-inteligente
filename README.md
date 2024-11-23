@@ -16,22 +16,22 @@ Este projeto é um agente tutor inteligente que utiliza a API da OpenAI para for
    ```bash
    cd agente-tutor-inteligente
    ```
-3. Crie e ative um ambiente virtual:
-   ````bash
+3. Crie um ambiente virtual:
+   ```bash
    python3 -m venv venv
+   ```
+4. Ative o ambiente virtual:
+   ```bash
    source venv/bin/activate
-   	```
-   ````
-4. Instale as dependências listadas no arquivo `requirements.txt`:
-   ````bash
+   ```
+5. Instale as dependências listadas no arquivo `requirements.txt`:
+   ```bash
    pip install -r requirements.txt
-   	```
-   ````
-5. Crie um arquivo `.env` no diretório raiz do projeto e adicione sua chave da OpenAI:
-   ````Plaintext
+   ```
+6. Crie um arquivo `.env` no diretório raiz do projeto e adicione sua chave da OpenAI:
+   ```Plaintext
    OPENAI_API_KEY=sua_chave_de_API_da_OpenAI
-   	```
-   ````
+   ```
 
 ## Uso
 
