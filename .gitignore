@@ -1,0 +1,13 @@
+# local env files
+.env*.local
+
+# Ignorar o ambiente virtual
+venv/
+
+# Ignorar arquivos de cache do Python
+__pycache__/
+
+# Ignorar arquivos específicos de configuração do sistema operacional e IDE
+.DS_Store
+.idea/
+.vscode/
