@@ -1,5 +1,5 @@
-openai
+openai==0.28
 python-dotenv
 ipykernel
-streamlit
+streamlit==1.40.1
 unidecode
