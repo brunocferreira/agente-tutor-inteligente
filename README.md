@@ -37,6 +37,12 @@ Este projeto é um agente tutor inteligente que utiliza a API da OpenAI para for
 
 Para iniciar o projeto, certifique-se de que seu ambiente virtual esteja ativado e execute o arquivo principal do projeto.
 
+- Inicialize o streamlit para executar o projeto:
+
+```bash
+streamlit run main.py
+```
+
 ## Contribuição
 
 Para contribuir com este projeto, por favor faça um fork do repositório e envie um pull request com suas alterações.

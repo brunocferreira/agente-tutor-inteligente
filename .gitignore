@@ -5,6 +5,12 @@
 # Ignorar o ambiente virtual
 venv/
 
+# Ignorar a pasta de configurações
+configuracoes/
+
+# Ignorar a pasta de mensagens
+mensagens/
+
 # Ignorar arquivos de cache do Python
 __pycache__/
 
