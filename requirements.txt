@@ -1,5 +1,9 @@
-openai==0.28
+openai==1.8
 python-dotenv
 ipykernel
-streamlit==1.40.1
+streamlit==1.40.0
 unidecode
+pydub
+ffmpeg
+moviepy
+requests-toolbelt

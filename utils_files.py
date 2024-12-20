@@ -1,11 +1,11 @@
 # utils_file.py
+from dotenv import load_dotenv, find_dotenv
+import os
 from unidecode import unidecode
 import re
 from pathlib import Path
 import pickle
 
-import os
-from dotenv import load_dotenv, find_dotenv
 # Carrega o arquivo .env
 _ = load_dotenv(find_dotenv())
 
@@ -17,6 +17,12 @@ PASTA_CONFIGERACOES = Path(__file__).parent / 'configuracoes'
 PASTA_CONFIGERACOES.mkdir(exist_ok=True)
 PASTA_MENSAGENS = Path(__file__).parent / 'mensagens'
 PASTA_MENSAGENS.mkdir(exist_ok=True)
+PASTA_TEMP = Path(__file__).parent / 'temp'
+PASTA_TEMP.mkdir(exist_ok=True)
+ARQUIVO_AUDIO_TEMP = PASTA_TEMP / 'audio.mp3'
+ARQUIVO_MIC_TEMP = PASTA_TEMP / 'mic.mp3'
+ARQUIVO_VIDEO_TEMP = PASTA_TEMP / 'video.mp4'
+ARQUIVO_FOTO_TEMP = PASTA_TEMP / 'foto.jpeg'
 CACHE_DESCONVERTE = {}
 
 

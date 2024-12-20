@@ -11,6 +11,9 @@ configuracoes/
 # Ignorar a pasta de mensagens
 mensagens/
 
+# Ignorar a pasta de temp
+temp/
+
 # Ignorar arquivos de cache do Python
 __pycache__/
 
