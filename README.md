@@ -47,7 +47,7 @@ streamlit run main.py
 
 Para os testes deste projeto, foi usado o e-book de **Cálculo é Fácil** do professor _Walter Ferreira Velloso Junior_, disponível no:
 
-> [portal de livros da USP]("https://www.livrosabertos.abcd.usp.br/portaldelivrosUSP/catalog/view/496/447/1723")
+> [portal de livros da USP](https://www.livrosabertos.abcd.usp.br/portaldelivrosUSP/catalog/view/496/447/1723)
 
 ## Contribuição
 
