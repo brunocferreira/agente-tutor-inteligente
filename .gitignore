@@ -11,8 +11,14 @@ configuracoes/
 # Ignorar a pasta de mensagens
 mensagens/
 
+# Ignorar a pasta de arquivos
+arquivos/
+
 # Ignorar a pasta de temp
 temp/
+
+# Ignorar a pasta de media
+media/
 
 # Ignorar arquivos de cache do Python
 __pycache__/

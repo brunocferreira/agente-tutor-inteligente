@@ -1,28 +1,40 @@
-# utils_openai.py
+# --- File: utils_openai.py --- #
+
+# --- Libraries --- #
+# Biblioteca para realizar requisições HTTP, usada para enviar dados à API da OpenAI.
 import requests
-
+# Biblioteca para carregar variáveis de ambiente do arquivo .env.
 from dotenv import load_dotenv, find_dotenv
-import os
+import os  # Biblioteca para acessar variáveis de ambiente do sistema.
 
-# Carrega o arquivo .env
+# --- Environment Setup --- #
+# Carrega o arquivo .env que contém as credenciais sensíveis.
 _ = load_dotenv(find_dotenv())
 
+
+# --- Methods --- #
 # API OPENAI ================================================
 
-
-def retorna_resposta_modelo(mensagens, openai_key, modelo='gpt-3.5-turbo', temperatura=0, stream=False):
+def retorna_resposta_modelo(mensagens: list, openai_key: str, modelo: str = 'gpt-4-turbo', temperatura: float = 0, stream: bool = False):
     """
-    Função para retornar a mensagem do modelo.
+    Envia uma solicitação para a API da OpenAI e retorna a resposta gerada pelo modelo.
 
     Parâmetros:
-    - `mensagens` (list): Uma lista de mensagens de entrada para o modelo. Cada mensagem deve ser um dicionário com as chaves 'role' (basicamente o usuário) e 'content' (a mensagem em si).
-    - `openai_key` (str): Chave da API da OpenAI usada para autenticação e autorização no serviço da OpenAI.
-    - `modelo` (str): O nome do modelo a ser usado (padrão é 'gpt-3.5-turbo').
-    - `temperatura` (float): Controla a aleatoriedade das respostas geradas. Valores mais altos como 1.0 tornam as saídas mais criativas, enquanto valores mais baixos como 0.2 as tornam mais focadas e determinísticas.
-    - `stream` (bool): Se `True`, ativa o modo de transmissão contínua para obter resultados parciais em tempo real (padrão é `False`, que obtém o resultado apenas após a mensagem estar completa).
+    \n\t`mensagens (list)`: Lista de mensagens de entrada. Cada mensagem deve ser um dicionário com as chaves 'role' (identificando o remetente) e 'content' (conteúdo da mensagem).
+    \n\t`openai_key (str)`: Chave da API da OpenAI usada para autenticação e autorização no serviço.
+    \n\t`modelo (str)`: Nome do modelo a ser utilizado (padrão: 'gpt-4-turbo').
+    \n\t`temperatura (float)`: Controla a aleatoriedade das respostas geradas. Valores altos (ex: 1.0) tornam as respostas mais criativas, enquanto valores baixos (ex: 0.2) tornam-nas mais focadas e determinísticas.
+    \n\t`stream (bool)`: Se `True`, ativa o modo de transmissão contínua para obter resultados parciais em tempo real (padrão: `False`, retornando a resposta completa de uma vez).
 
-    Retorna:
-    - Uma mensagem gerada pelo modelo com base nas mensagens de entrada e parâmetros fornecidos.
+    Retorno:
+    \n\t- Se `stream` for `True`, retorna um gerador que produz respostas parciais em tempo real.
+    \n\t- Caso contrário, retorna a resposta completa do modelo como um JSON.
+
+    Exemplo:
+    >>> mensagens = [{"role": "user", "content": "Qual a capital da França?"}]
+    >>> resposta = retorna_resposta_modelo(mensagens, "sua_api_key")
+    >>> print(resposta)
+    {"choices": [{"message": {"role": "assistant", "content": "A capital da França é Paris."}}]}
     """
     headers = {
         "Authorization": f"Bearer {openai_key}",

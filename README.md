@@ -43,6 +43,12 @@ Para iniciar o projeto, certifique-se de que seu ambiente virtual esteja ativado
 streamlit run main.py
 ```
 
+### Material de apoio
+
+Para os testes deste projeto, foi usado o e-book de **Cálculo é Fácil** do professor _Walter Ferreira Velloso Junior_, disponível no:
+
+> [portal de livros da USP]("https://www.livrosabertos.abcd.usp.br/portaldelivrosUSP/catalog/view/496/447/1723")
+
 ## Contribuição
 
 Para contribuir com este projeto, por favor faça um fork do repositório e envie um pull request com suas alterações.
