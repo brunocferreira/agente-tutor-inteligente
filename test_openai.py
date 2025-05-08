@@ -12,15 +12,27 @@ from dotenv import load_dotenv, find_dotenv
 # Carrega o arquivo .env que contém as credenciais sensíveis
 _ = load_dotenv(find_dotenv())
 
-# Obtém a chave da API da OpenAI a partir do arquivo .env
-api_key = os.getenv("OPENAI_API_KEY")
 
-if not api_key:
-    raise ValueError("A chave da API não foi encontrada no arquivo .env")
+def get_api_key(provided_api_key: str = None) -> str:
+    """
+    Retorna a chave da API a partir do parâmetro informado ou das variáveis de ambiente.
+    Caso a chave não seja encontrada, lança um erro solicitando sua inserção.
+
+    Parâmetros:
+        provided_api_key (str): Chave da API informada na chamada da função.
+
+    Retorno:
+        str: Chave da API.
+    """
+    key = provided_api_key if provided_api_key else os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError(
+            "A chave da API não foi encontrada. Insira a chave na variável .env ou passe para a função test.")
+    return key
 
 
 # --- Methods --- #
-def mask_api_key(api_key: str) -> str:
+def mask_api_key(api_key: str = None) -> str:
     """
     Mascara a chave da API para exibição segura.
 
@@ -34,22 +46,19 @@ def mask_api_key(api_key: str) -> str:
     >>> mask_api_key("sk-12345ABCDE67890FGHIJ")
     'sk-12345*****FGHIJ'
     """
+    if (api_key == None):
+        return print("Erro: API_KEY não definida. Insira a sua chave da API da OpenAI para o teste ou a defina em .env")
     if len(api_key) < 10:
         raise ValueError("A chave deve ter pelo menos 10 caracteres.")
     return f"{api_key[:5]}*****{api_key[-5:]}"
 
 
-# Exibe a chave mascarada
-mascarada = mask_api_key(api_key)
-print(mascarada)
-
-
-def test(api_key: str, model: str = 'gpt-3.5-turbo', temperature: float = 0, stream: bool = False) -> None:
+def test(api_key: str = None, model: str = 'gpt-3.5-turbo', temperature: float = 0, stream: bool = False) -> None:
     """
     Testa a conexão com a API da OpenAI enviando uma mensagem de verificação.
 
     Parâmetros:
-    \n\t`api_key (str)`: Chave da API OpenAI.
+    \n\t`api_key (str)`: Chave da API a ser utilizada. Se não for passada, a função utiliza a variável de ambiente.
     \n\t`model (str)`: Nome do modelo a ser utilizado (padrão: 'gpt-3.5-turbo').
     \n\t`temperature (float)`: Grau de aleatoriedade na resposta do modelo (padrão: 0).
     \n\t`stream (bool)`: Define se a resposta será transmitida em partes (padrão: False).
@@ -61,10 +70,17 @@ def test(api_key: str, model: str = 'gpt-3.5-turbo', temperature: float = 0, str
     >>> test(api_key, model='gpt-3.5-turbo', temperature=0.7, stream=False)
     "Sim, estou aqui! Como posso ajudar?"
     """
-    # Faz a solicitação
+    # Obtém e valida a chave da API
+    chave = get_api_key(api_key)
+    print("Chave API mascarada:", mask_api_key(chave))
+
+    # Instancia o cliente utilizando a chave
+    client = openai.OpenAI(api_key=chave)
+
     try:
-        openai.api_key = api_key
-        response = openai.ChatCompletion.create(
+        # Criação do cliente com a API Key
+        response = client.chat.completions.create(
+            # response = openai.ChatCompletion.create(
             model=model,
             messages=[
                 {
@@ -75,11 +91,21 @@ def test(api_key: str, model: str = 'gpt-3.5-turbo', temperature: float = 0, str
             temperature=temperature,
             stream=stream,
         )
-        print(response['choices'][0]['message']['content'])
+
+        if stream:
+            for chunk in response:
+                # Alguns chunks podem não conter o campo 'content'
+                content = chunk.choices[0].delta.get("content", "")
+                print(content, end="", flush=True)
+        else:
+            print(response.choices[0].message.content)
+
     except Exception as e:
-        print("Erro ao acessar ChatCompletion.create:", e)
-        print("Certifique que a versão da openai é a 1.59.9")
+        print("Erro ao acessar client.chat.completions.create:", e)
+        print("Certifique-se de que a versão da OpenAI esteja na 1.59.9.")
 
 
-# Executa o código test
-test(api_key)
+# Executa o teste
+if __name__ == '__main__':
+    # Chamada de teste; se desejar, passe a chave como parâmetro ou deixe que ela seja carregada do .env
+    test()

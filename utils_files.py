@@ -330,6 +330,9 @@ def cria_vector_store(documentos: list):
             documents=documentos,
             embedding=embedding_model
         )
+        print("DEBUG: Tipo de vector_store:", type(vector_store))
+        print("DEBUG: Conteúdo de vector_store:", vector_store)
+
         return vector_store
     except Exception as e:
         print("Failed to initialize embedding model:", e)
@@ -440,86 +443,197 @@ def nova_mensagem(prompt: str, mensagens: list, flag: bool = False, placeholder=
     """
     st.session_state['show_modal'] = False
 
-    nova_mensagem = {'role': 'user',
-                     'content': prompt}
+    """
+    Processa a mensagem do usuário e obtém a resposta do assistente via streaming,
+    usando a função retorna_resposta_modelo().
 
-    mensagens.append(nova_mensagem)
+    - Adiciona a mensagem do usuário ao histórico.
+    - Faz a chamada à API em modo streaming.
+    - Para cada chunk recebido, o token é acumulado e yieldado.
+    - Ao final, adiciona a resposta completa (do assistente) ao histórico,
+      salva e atualiza o st.session_state.
 
-    if flag:
-        chat = st.chat_message(nova_mensagem['role'])
-        chat.markdown(
-            f'<div class="user-message">{nova_mensagem["content"]}</div>', unsafe_allow_html=True)
+    Retorna (via yield) os pedaços de resposta do assistente.
+    """
 
-        chat = st.chat_message('assistant')
+    """
+    Recebe o prompt do usuário, chama retorna_resposta_modelo() em modo streaming,
+    yieldando pedaços de texto do assistente.
+    Não exibe nada no Streamlit. A exibição fica no pg_conversas().
+    """
+    # Adiciona mensagem do usuário ao histórico
+    nova_msg_usuario = {"role": "user", "content": prompt}
+    mensagens.append(nova_msg_usuario)
 
-        placeholder = chat.empty()
-
-        placeholder.markdown(
-            "<div class='assistant-message'>▌ </div>", unsafe_allow_html=True)
-
-    resposta_completa = ''
-
+    resposta_completa = ""
     try:
-        respostas = retorna_resposta_modelo(
+        # Chamamos retorna_resposta_modelo com stream=True
+        for line in retorna_resposta_modelo(
             mensagens,
             st.session_state['api_key'],
             modelo=st.session_state['modelo'],
-            stream=True,
-        )
+            stream=True
+        ):
+            if not line.startswith("data: "):
+                continue
+            if line.strip() == "data: [DONE]":
+                break
 
-        for resposta in respostas:
+            conteudo_json = line[len("data: "):]
             try:
-                json_resposta = json.loads(
-                    resposta.lstrip("data: "))
-
-                delta = json_resposta.get("choices", [{}])[
-                    0].get("delta", {})
-
-                content = delta.get("content", "")
-                resposta_completa += content
-
-                if flag:
-                    placeholder.markdown(
-                        f"<div class='assistant-message'>{resposta_completa}▌</div>",
-                        unsafe_allow_html=True
-                    )
-
-            except json.JSONDecodeError as e:
-                print("Mensagem de Stream recebida com sucesso!")
+                pedaco = json.loads(conteudo_json)
+            except json.JSONDecodeError:
                 continue
 
-            except Exception as e:
-                print(f"Erro inesperado: {e}")
-                st.error(
-                    "Erro inesperado ao processar a resposta.")
-
-        if flag:
-            placeholder.markdown(
-                f"<div class='assistant-message'>{resposta_completa}</div>",
-                unsafe_allow_html=True
-            )
-
-        nova_mensagem = {'role': 'assistant',
-                         'content': resposta_completa}
-
-        st.session_state['mensagens'] = mensagens
-
-        mensagens.append(nova_mensagem)
-
-        salvar_mensagens(mensagens)
-
-        if placeholder is None:
-            st.rerun()
-
-    except requests.exceptions.HTTPError as e:
-        st.error(
-            '😣 Desculpe, mas o ChatGPT está indisponível no momento.')
-        print(f"Erro HTTP: {e}")
+            delta = pedaco.get("choices", [{}])[0].get("delta", {})
+            content = delta.get("content", "")
+            resposta_completa += content
+            yield content
 
     except Exception as e:
-        st.error(
-            '😫 Ocorreu um erro inesperado. Por favor, tente novamente mais tarde.')
-        print(f"Erro inesperado: {e}")
+        yield f"[ERRO]: {e}"
+
+    # Ao final, adiciona a resposta ao histórico
+    nova_msg_assistente = {"role": "assistant", "content": resposta_completa}
+    mensagens.append(nova_msg_assistente)
+    st.session_state['mensagens'] = mensagens
+    salvar_mensagens(mensagens)
+
+    # ---
+
+    # # Adiciona a mensagem do usuário ao histórico
+    # nova_msg_usuario = {"role": "user", "content": prompt}
+    # mensagens.append(nova_msg_usuario)
+
+    # resposta_completa = ""
+    # try:
+    #     for line in retorna_resposta_modelo(
+    #         mensagens,
+    #         st.session_state['api_key'],
+    #         modelo=st.session_state['modelo'],
+    #         temperatura=0,
+    #         stream=True
+    #     ):
+    #         # Filtra linhas úteis
+    #         if not line.startswith("data: "):
+    #             continue
+    #         if line.strip() == "data: [DONE]":
+    #             break
+
+    #         conteudo_json = line[len("data: "):]
+    #         try:
+    #             pedaco = json.loads(conteudo_json)
+    #         except json.JSONDecodeError:
+    #             continue
+
+    #         delta = pedaco.get("choices", [{}])[0].get("delta", {})
+    #         content = delta.get("content", "")
+    #         resposta_completa += content
+    #         yield content  # Yield do chunk para o streaming
+
+    # except Exception as e:
+    #     yield f"[ERRO]: {e}"
+
+    # # Ao final, adiciona a resposta completa ao histórico
+    # nova_msg_assistente = {"role": "assistant", "content": resposta_completa}
+    # mensagens.append(nova_msg_assistente)
+    # salvar_mensagens(mensagens)
+    # st.session_state['mensagens'] = mensagens
+
+    # ---
+
+    # nova_mensagem = {'role': 'user', 'content': prompt}
+
+    # mensagens.append(nova_mensagem)
+
+    # if flag:
+    #     chat = st.chat_message(nova_mensagem['role'])
+    #     chat.markdown(
+    #         f'<div class="user-message">{nova_mensagem["content"]}</div>', unsafe_allow_html=True)
+
+    #     chat = st.chat_message('assistant')
+
+    #     placeholder = chat.empty()
+
+    #     placeholder.markdown(
+    #         "<div class='assistant-message'>▌ </div>", unsafe_allow_html=True)
+
+    # # resposta_completa = ''
+    # resposta_completa = ""
+
+    # try:
+    #     respostas = retorna_resposta_modelo(
+    #         mensagens,
+    #         st.session_state['api_key'],
+    #         modelo=st.session_state['modelo'],
+    #         stream=True,
+    #     )
+
+    #     for linha in respostas:
+    #         # Se a linha não começar com 'data: ', pule.
+    #         if not linha.startswith("data: "):
+    #             continue
+
+    #         # Se for a linha de encerramento [DONE], saia do loop.
+    #         if linha.strip() == "data: [DONE]":
+    #             break
+
+    #         # Remova 'data: ' do início para tentar fazer JSON parse
+    #         conteudo_json = linha[len("data: "):]
+
+    #         try:
+    #             pedaco = json.loads(conteudo_json)
+    #         except json.JSONDecodeError:
+    #             # Simplesmente ignore se não for JSON válido
+    #             continue
+
+    #         delta = pedaco.get("choices", [{}])[0].get("delta", {})
+    #         content = delta.get("content", "")
+
+    #         # Concatena apenas o texto novo
+    #         resposta_completa += content
+
+    #         # Se estiver exibindo no chat, atualize o placeholder
+    #         if flag:
+    #             placeholder.markdown(
+    #                 f"<div class='assistant-message'>{resposta_completa}▌</div>",
+    #                 unsafe_allow_html=True
+    #             )
+
+    #     # Ao final, se quiser remover o cursor ▌, pode atualizar o placeholder de novo:
+    #     if flag:
+    #         placeholder.markdown(
+    #             f"<div class='assistant-message'>{resposta_completa}</div>",
+    #             unsafe_allow_html=True
+    #         )
+
+    #     nova_mensagem = {'role': 'assistant',
+    #                      'content': resposta_completa}
+
+    #     st.session_state['mensagens'] = mensagens
+
+    #     mensagens.append(nova_mensagem)
+
+    #     print(f"\n[Requisição do Usuário]:\n \033[35m{prompt}\033[0m \n")
+    #     print(
+    #         f"[Resposta do Chat de Conversa]:\n \033[31m{resposta_completa}\033[0m \n\n")
+
+    #     salvar_mensagens(mensagens)
+
+    #     placeholder = None
+
+    #     if placeholder is None:
+    #         st.rerun()
+
+    # except requests.exceptions.HTTPError as e:
+    #     st.error(
+    #         '😣 Desculpe, mas o ChatGPT está indisponível no momento.')
+    #     print(f"Erro HTTP: {e}")
+
+    # except Exception as e:
+    #     st.error(
+    #         '😫 Ocorreu um erro inesperado. Por favor, tente novamente mais tarde.')
+    #     print(f"Erro inesperado: {e}")
 
 
 def transcreve_audio(caminho_audio: str, prompt: str, headers: dict, _return: bool = True):
@@ -690,11 +804,31 @@ def transcreve_video_recebido():
                     flag_continue = None
                     arquivo_video = None
 
+                    print(st.session_state['transcricao'])
+
+                    # with st.spinner('Processando a resposta...'):
+                    #     nova_mensagem_wrapper(st.session_state['transcricao'],
+                    #                           st.session_state['mensagens'],
+                    #                           False,
+                    #                           None)
+                    #     st.rerun()
+
                     with st.spinner('Processando a resposta...'):
-                        nova_mensagem(st.session_state['transcricao'],
-                                      st.session_state['mensagens'],
-                                      False,
-                                      None)
+                        # resposta_acumulada = ""
+                        # for chunk in nova_mensagem_wrapper(st.session_state['transcricao'],
+                        #                                    st.session_state['mensagens'],
+                        #                                    False,
+                        #                                    None):
+                        #     resposta_acumulada += chunk
+                        #     # ou atualize um placeholder se preferir
+                        #     st.write(resposta_acumulada)
+                        with st.spinner('Processando a resposta...'):
+                            resposta_completa = nova_mensagem_wrapper(
+                                st.session_state['transcricao'], st.session_state['mensagens'])
+                            # Se quiser fazer algo adicional com o texto final:
+                            st.write("Debug - Resposta final:",
+                                     resposta_completa)
+
                         st.rerun()
 
     if st.button("Fechar", key="Fechar"):
@@ -761,11 +895,11 @@ def transcreve_audio_recebido():
                         st.session_state['transcricao'] = transcricao
                         arquivo_audio = None
 
+                        print(st.session_state['transcricao'])
+
                         with st.spinner('Processando a resposta...'):
-                            nova_mensagem(transcricao,
-                                          st.session_state['mensagens'],
-                                          False,
-                                          None)
+                            resposta_completa = nova_mensagem_wrapper(
+                                transcricao, st.session_state['mensagens'])
                             st.rerun()
 
                     else:
@@ -790,6 +924,39 @@ def transcreve_audio_recebido():
             st.session_state['transcricao'] = ''
             st.session_state['show_modal'] = False
             st.rerun()
+
+
+def nova_mensagem_wrapper(prompt: str, mensagens: list):
+    """
+    Função wrapper que:
+      - Concatena a transcrição ao prompt (se houver),
+      - Chama nova_mensagem() em modo streaming,
+      - Faz a iteração dos chunks internamente
+      - Exibe e/ou retorna a resposta completa.
+    """
+
+    # 1) Concatena a transcrição, se existir
+    transcricao = st.session_state.get('transcricao', '').strip()
+    if transcricao:
+        prompt = f"Transcrição do áudio:\n{transcricao}\n\nPergunta do usuário:\n{prompt}"
+        # Limpa a transcrição para não reutilizar em chamadas futuras
+        st.session_state['transcricao'] = ''
+
+    # 2) Cria um placeholder para exibirmos (opcional, se quiser streaming visual)
+    placeholder_assistant = st.chat_message('assistant').empty()
+
+    # 3) Faz a iteração sobre nova_mensagem e exibe pedaços de resposta
+    resposta_acumulada = ""
+    for chunk in nova_mensagem(prompt, mensagens):
+        resposta_acumulada += chunk
+        # Exemplo: atualizar o placeholder em tempo real (streaming)
+        placeholder_assistant.markdown(
+            f"<div class='assistant-message'>{resposta_acumulada}<span></span></div>",
+            unsafe_allow_html=True
+        )
+
+    # 4) Ao final, retorna (ou exibe) a resposta completa
+    return resposta_acumulada
 
 
 def renderizar_mensagens(mensagens: list, placeholder=None) -> None:
@@ -821,10 +988,12 @@ def renderizar_mensagens(mensagens: list, placeholder=None) -> None:
                 f'<div class="assistant-message">{mensagens["content"]}</div>', unsafe_allow_html=True)
         if placeholder is not None:
             placeholder.markdown(
-                "<div class='assistant-message'>▌</div>", unsafe_allow_html=True)
+                "<div class='assistant-message'><span>▌</span></div>", unsafe_allow_html=True)
 
 
 # PÁGINA PRINCIPAL ==================================================
+
+# PÁGINA de Converas =========================
 
 def pg_conversas() -> None:
     """
@@ -843,63 +1012,562 @@ def pg_conversas() -> None:
     Exemplo:
     >>> pg_conversas()
     """
+
+    """
+    Exibe o histórico completo do chat e gerencia a interação com o usuário.
+    Toda a renderização é feita aqui:
+      - Exibe mensagens anteriores (usuário e assistente).
+      - Captura o prompt via st.chat_input().
+      - Exibe imediatamente a mensagem do usuário.
+      - Cria um placeholder para o assistente e atualiza-o em streaming,
+        consumindo os chunks yieldados por nova_mensagem().
+    """
+
+    """
+    Exibe todo o histórico e gerencia a conversa.
+    O 'st.chat_input()' fica sempre no rodapé,
+    mas tudo que for exibido (mensagens antigas, mensagem nova do usuário e do assistente)
+    acontece ANTES do chat_input no código.
+    """
+
+    """
+    Exibe todo o histórico e gerencia a conversa.
+    O 'st.chat_input()' fica sempre no rodapé,
+    mas agora está envolvido em um container 'footer' para melhor organização.
+    """
+
     st.header('🗨️ Chat de Conversas - LLM', divider=True)
 
+    # Carrega histórico
+    if 'mensagens' not in st.session_state:
+        st.session_state['mensagens'] = []
     mensagens = ler_mensagens(st.session_state['mensagens'])
 
-    placeholder = st.empty()
-
-    for mensagem in mensagens:
-        if mensagem['role'] == 'user':
-            chat = st.chat_message(mensagem['role'])
-            chat.markdown(
-                f'<div class="user-message">{mensagem["content"]}</div>', unsafe_allow_html=True)
+    # 1) Exibe o histórico anterior (usuário e assistente)
+    for msg in mensagens:
+        if msg['role'] == 'user':
+            st.chat_message('user').markdown(
+                f"<div class='user-message'>{msg['content']}</div>",
+                unsafe_allow_html=True
+            )
         else:
-            chat = st.chat_message(mensagem['role'])
-            chat.markdown(
-                f'<div class="assistant-message">{mensagem["content"]}</div>', unsafe_allow_html=True)
+            st.chat_message('assistant').markdown(
+                f"<div class='assistant-message'>{msg['content']}</div>",
+                unsafe_allow_html=True
+            )
 
+    # 2) Agora criamos um container 'footer' para o campo de entrada e outros elementos
     with st.container(key='footer'):
+        # Campo de entrada do chat (fixado ao rodapé por padrão do Streamlit)
         prompt = st.chat_input('Fale com o tutor')
 
-        options_pills = ["⌨️", "🎤", "📽️"]
+        col1, col2 = st.columns([1, 3])  # Ajuste as larguras como quiser
 
-        seleciona_midia = st.pills(
-            "Selecione a Mídia",
-            options_pills,
-            selection_mode="single",
-            key='input-select',
-            label_visibility="hidden"
-        )
+        with col1:
+            options_pills = ["⌨️", "🎤", "📽️"]
+            seleciona_midia = st.pills(
+                "Selecione a Mídia",
+                options_pills,
+                selection_mode="single",
+                key='input-select',
+                label_visibility="hidden"
+            )
+            st.session_state['input'] = seleciona_midia
+            js_debug(st.session_state['input'])
 
-        st.session_state['input'] = seleciona_midia
+            if st.session_state['input'] == "⌨️":
+                js_debug("reinicia o modal")
+                st.session_state['show_modal'] = True
+                st.session_state['transcricao'] = ''
+            elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+                js_debug("transcreve_audio_recebido()")
+                st.session_state['input'] = "⌨️"
+                transcreve_audio_recebido()
+            elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+                js_debug("transcreve_video_recebido()")
+                st.session_state['input'] = "⌨️"
+                transcreve_video_recebido()
 
-        js_debug(st.session_state['input'])
+        with col2:
+            st.markdown(
+                "<small>O Chat de Conversas pode cometer erros. Considere verificar informações importantes.</small>", unsafe_allow_html=True)
 
-        # Verificar a seleção para abrir o diálogo correspondente
-        if st.session_state['input'] == "⌨️":
-            js_debug("reinicia o modal")
-            # reseta
-            st.session_state['show_modal'] = True
-            st.session_state['transcricao'] = ''
-        elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
-            js_debug("transcreve_audio_recebido()")
-            st.session_state['input'] = "⌨️"
-            transcreve_audio_recebido()
-        elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
-            js_debug("transcreve_video_recebido()")
-            st.session_state['input'] = "⌨️"
-            transcreve_video_recebido()
+    # 3) Se o usuário digitou algo
+    if prompt:
+        if st.session_state['api_key'] == '':
+            st.error('Adicione uma chave de API na aba de configurações')
+        else:
+            # a) Exibe imediatamente a mensagem do usuário
+            st.chat_message('user').markdown(
+                f"<div class='user-message'>{prompt}</div>",
+                unsafe_allow_html=True
+            )
 
-        st.markdown(
-            '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._')
+            # b) Cria um placeholder para o assistente
+            placeholder_assistant = st.chat_message('assistant').empty()
 
-        # Faz a requisição, se houver
-        if prompt:
-            if st.session_state['api_key'] == '':
-                st.error('Adicone uma chave de api na aba de configurações')
-            else:
-                nova_mensagem(prompt, mensagens, True, placeholder)
+            # c) Faz o streaming (chama nova_mensagem)
+            resposta_acumulada = ""
+            for chunk in nova_mensagem(prompt, mensagens):
+                resposta_acumulada += chunk
+                placeholder_assistant.markdown(
+                    f"<div class='assistant-message'>{resposta_acumulada}<span></span></div>", unsafe_allow_html=True)
+
+            # d) Ao final, exibe a resposta sem o cursor
+            placeholder_assistant.markdown(
+                f"<div class='assistant-message'>{resposta_acumulada}</div>",
+                unsafe_allow_html=True
+            )
+
+    # ---
+
+    # st.header('🗨️ Chat de Conversas - LLM', divider=True)
+
+    # # Carrega histórico
+    # if 'mensagens' not in st.session_state:
+    #     st.session_state['mensagens'] = []
+    # mensagens = ler_mensagens(st.session_state['mensagens'])
+
+    # # 1) Exibe o histórico anterior
+    # for msg in mensagens:
+    #     if msg['role'] == 'user':
+    #         st.chat_message('user').markdown(
+    #             f"<div class='user-message'>{msg['content']}</div>",
+    #             unsafe_allow_html=True
+    #         )
+    #     else:
+    #         st.chat_message('assistant').markdown(
+    #             f"<div class='assistant-message'>{msg['content']}</div>",
+    #             unsafe_allow_html=True
+    #         )
+
+    # # 2) Se houver alguma mensagem recém-enviada (guardada em st.session_state),
+    # #    mas ainda não exibida, você poderia exibir aqui antes do input.
+    # #    (Geralmente não precisa, pois já está no histórico.)
+
+    # # 3) Verifica se existe alguma mensagem pendente de streaming
+    # #    (Cenário: se você não finalizou o streaming na mesma execução)
+    # #    Normalmente, no Streamlit, o streaming ocorre na mesma reexecução do prompt,
+    # #    então não é preciso algo adicional aqui.
+
+    # # 4) Agora exibimos o campo de entrada (chat_input) - ele fica fixado no rodapé
+    # prompt = st.chat_input('Fale com o tutor')
+
+    # # Exemplo: pills de mídia
+    # options_pills = ["⌨️", "🎤", "📽️"]
+    # seleciona_midia = st.pills(
+    #     "Selecione a Mídia",
+    #     options_pills,
+    #     selection_mode="single",
+    #     key='input-select',
+    #     label_visibility="hidden"
+    # )
+    # st.session_state['input'] = seleciona_midia
+    # js_debug(st.session_state['input'])
+
+    # if st.session_state['input'] == "⌨️":
+    #     js_debug("reinicia o modal")
+    #     st.session_state['show_modal'] = True
+    #     st.session_state['transcricao'] = ''
+    # elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+    #     js_debug("transcreve_audio_recebido()")
+    #     st.session_state['input'] = "⌨️"
+    #     transcreve_audio_recebido()
+    # elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+    #     js_debug("transcreve_video_recebido()")
+    #     st.session_state['input'] = "⌨️"
+    #     transcreve_video_recebido()
+
+    # st.markdown(
+    #     '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._')
+
+    # # 5) Se o usuário digitou algo no chat_input
+    # if prompt:
+    #     if st.session_state['api_key'] == '':
+    #         st.error('Adicione uma chave de API na aba de configurações')
+    #     else:
+    #         # a) Exibe imediatamente a mensagem do usuário
+    #         st.chat_message('user').markdown(
+    #             f"<div class='user-message'>{prompt}</div>",
+    #             unsafe_allow_html=True
+    #         )
+
+    #         # b) Cria um placeholder para o assistente
+    #         placeholder_assistant = st.chat_message('assistant').empty()
+
+    #         # c) Faz o streaming (chama nova_mensagem)
+    #         resposta_acumulada = ""
+    #         for chunk in nova_mensagem(prompt, mensagens):
+    #             resposta_acumulada += chunk
+    #             placeholder_assistant.markdown(
+    #                 f"<div class='assistant-message'>{resposta_acumulada}</div>",
+    #                 unsafe_allow_html=True
+    #             )
+
+    #         # d) Ao final, exibe a resposta sem o cursor
+    #         placeholder_assistant.markdown(
+    #             f"<div class='assistant-message'>{resposta_acumulada}</div>",
+    #             unsafe_allow_html=True
+    #         )
+
+    #         # e) Fim. A próxima reexecução do script vai redesenhar tudo acima do chat_input.
+
+    # ---
+
+    # st.header('🗨️ Chat de Conversas - LLM', divider=True)
+
+    # # Carrega o histórico de mensagens do session_state
+    # if 'mensagens' not in st.session_state:
+    #     st.session_state['mensagens'] = []
+    # mensagens = ler_mensagens(st.session_state['mensagens'])
+
+    # # Exibe o histórico anterior
+    # for msg in mensagens:
+    #     if msg['role'] == 'user':
+    #         st.chat_message('user').markdown(
+    #             f"<div class='user-message'>{msg['content']}</div>",
+    #             unsafe_allow_html=True
+    #         )
+    #     else:
+    #         st.chat_message('assistant').markdown(
+    #             f"<div class='assistant-message'>{msg['content']}</div>",
+    #             unsafe_allow_html=True
+    #         )
+
+    # # Área de entrada do chat (fixada no rodapé)
+    # with st.container(key='footer'):
+    #     prompt = st.chat_input('Fale com o tutor')
+
+    #     options_pills = ["⌨️", "🎤", "📽️"]
+    #     seleciona_midia = st.pills(
+    #         "Selecione a Mídia",
+    #         options_pills,
+    #         selection_mode="single",
+    #         key='input-select',
+    #         label_visibility="hidden"
+    #     )
+    #     st.session_state['input'] = seleciona_midia
+    #     js_debug(st.session_state['input'])
+
+    #     if st.session_state['input'] == "⌨️":
+    #         js_debug("reinicia o modal")
+    #         st.session_state['show_modal'] = True
+    #         st.session_state['transcricao'] = ''
+    #     elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+    #         js_debug("transcreve_audio_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_audio_recebido()
+    #     elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+    #         js_debug("transcreve_video_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_video_recebido()
+
+    #     st.markdown(
+    #         '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._')
+
+    #     # Se houver entrada, processa a mensagem
+    #     if prompt:
+    #         if st.session_state['api_key'] == '':
+    #             st.error('Adicione uma chave de API na aba de configurações')
+    #         else:
+    #             # Exibe imediatamente a mensagem do usuário no histórico
+    #             st.chat_message('user').markdown(
+    #                 f"<div class='user-message'>{prompt}</div>",
+    #                 unsafe_allow_html=True
+    #             )
+
+    #             # Cria um placeholder para a resposta do assistente
+    #             assistant_placeholder = st.chat_message('assistant').empty()
+    #             resposta_acumulada = ""
+
+    #             # Chama nova_mensagem() para obter os chunks de resposta
+    #             for chunk in nova_mensagem(prompt, mensagens):
+    #                 resposta_acumulada += chunk
+    #                 # Atualiza o placeholder com o texto parcial e o cursor ()
+    #                 assistant_placeholder.markdown(
+    #                     f"<div class='assistant-message'>{resposta_acumulada}</div>",
+    #                     unsafe_allow_html=True
+    #                 )
+    #             # Exibe a resposta final sem o cursor
+    #             assistant_placeholder.markdown(
+    #                 f"<div class='assistant-message'>{resposta_acumulada}</div>",
+    #                 unsafe_allow_html=True
+    #             )
+
+    # ---
+
+    # st.header('🗨️ Chat de Conversas - LLM', divider=True)
+
+    # # Carrega o histórico de mensagens
+    # mensagens = ler_mensagens(st.session_state['mensagens'])
+
+    # # Cria um container para exibir o histórico de conversas
+    # chat_container = st.container()
+
+    # # Função para renderizar as mensagens no container
+    # def renderiza_chat():
+    #     chat_container.empty()  # Limpa o container antes de re-renderizar
+    #     for mensagem in mensagens:
+    #         if mensagem['role'] == 'user':
+    #             st.chat_message('user').markdown(
+    #                 f'<div class="user-message">{mensagem["content"]}</div>',
+    #                 unsafe_allow_html=True
+    #             )
+    #         else:
+    #             st.chat_message('assistant').markdown(
+    #                 f'<div class="assistant-message">{mensagem["content"]}</div>',
+    #                 unsafe_allow_html=True
+    #             )
+
+    # # Renderiza o histórico inicial
+    # renderiza_chat()
+
+    # # Área de entrada (rodapé) – ficará fixa na parte inferior da tela.
+    # with st.container(key='footer'):
+    #     prompt = st.chat_input('Fale com o tutor')
+
+    #     options_pills = ["⌨️", "🎤", "📽️"]
+    #     seleciona_midia = st.pills(
+    #         "Selecione a Mídia",
+    #         options_pills,
+    #         selection_mode="single",
+    #         key='input-select',
+    #         label_visibility="hidden"
+    #     )
+    #     st.session_state['input'] = seleciona_midia
+    #     js_debug(st.session_state['input'])
+
+    #     # Verificar a seleção para abrir o diálogo correspondente
+    #     if st.session_state['input'] == "⌨️":
+    #         js_debug("reinicia o modal")
+    #         st.session_state['show_modal'] = True
+    #         st.session_state['transcricao'] = ''
+    #     elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+    #         js_debug("transcreve_audio_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_audio_recebido()
+    #     elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+    #         js_debug("transcreve_video_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_video_recebido()
+
+    #     st.markdown(
+    #         '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._')
+
+    #     # Processa a requisição se houver entrada
+    #     if prompt:
+    #         # Primeiro, renderiza o prompt dentro do container para que a resposta
+    #         # seja exibida logo abaixo dele durante o stream.
+    #         with chat_container:
+    #             st.chat_message('user').markdown(
+    #                 f'<div class="user-message">{prompt}</div>',
+    #                 unsafe_allow_html=True
+    #             )
+    #         if st.session_state['api_key'] == '':
+    #             st.error('Adicione uma chave de API na aba de configurações')
+    #         else:
+    #             # Chama a função que envia a mensagem e obtém a resposta,
+    #             # passando o container de chat para atualização
+    #             nova_mensagem(prompt, mensagens, True, chat_container)
+    #             # Atualiza o histórico (se a função nova_mensagem modificar as mensagens)
+    #             renderiza_chat()
+
+    # ---
+
+    # st.header('🗨️ Chat de Conversas - LLM', divider=True)
+
+    # # 1. Carrega as mensagens do estado (ou de onde você as estiver salvando)
+    # mensagens = ler_mensagens(st.session_state['mensagens'])
+
+    # # 2. Exibe todo o histórico anterior (usuário e assistente)
+    # for mensagem in mensagens:
+    #     if mensagem['role'] == 'user':
+    #         chat = st.chat_message('user')
+    #         chat.markdown(
+    #             f'<div class="user-message">{mensagem["content"]}</div>',
+    #             unsafe_allow_html=True
+    #         )
+    #     else:
+    #         chat = st.chat_message('assistant')
+    #         chat.markdown(
+    #             f'<div class="assistant-message">{mensagem["content"]}</div>',
+    #             unsafe_allow_html=True
+    #         )
+
+    # # 3. Campo de entrada (fixado no rodapé, por padrão do st.chat_input)
+    # prompt = st.chat_input('Converse com a Inteligência Artificial')
+
+    # # 4. Opções de mídia (pills)
+    # options_pills = ["⌨️", "🎤", "📽️"]
+    # seleciona_midia = st.pills(
+    #     "Selecione a Mídia",
+    #     options_pills,
+    #     selection_mode="single",
+    #     key='input-select',
+    #     label_visibility="hidden"
+    # )
+    # st.session_state['input'] = seleciona_midia
+    # js_debug(st.session_state['input'])
+
+    # if st.session_state['input'] == "⌨️":
+    #     js_debug("reinicia o modal")
+    #     st.session_state['show_modal'] = True
+    #     st.session_state['transcricao'] = ''
+    # elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+    #     js_debug("transcreve_audio_recebido()")
+    #     st.session_state['input'] = "⌨️"
+    #     transcreve_audio_recebido()
+    # elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+    #     js_debug("transcreve_video_recebido()")
+    #     st.session_state['input'] = "⌨️"
+    #     transcreve_video_recebido()
+
+    # st.markdown(
+    #     '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._'
+    # )
+
+    # # 5. Se o usuário digitou algo
+    # if prompt:
+    #     # Verifica se a chave de API está configurada
+    #     if st.session_state['api_key'] == '':
+    #         st.error('Adicione uma chave de API na aba de configurações')
+    #     else:
+    #         # Chama a função 'nova_mensagem' para lidar com streaming e atualizar o histórico
+    #         nova_mensagem(prompt, mensagens, True, placeholder=None)
+    #         # A função 'nova_mensagem' já faz:
+    #         #  - Exibir a mensagem do usuário
+    #         #  - Exibir placeholder do assistente
+    #         #  - Fazer streaming do texto
+    #         #  - Ao final, chamar 'st.rerun()' para recarregar a página
+
+    # ----
+
+    # st.header('🗨️ Chat de Conversas - LLM', divider=True)
+
+    # mensagens = ler_mensagens(st.session_state['mensagens'])
+
+    # # Cria um container para exibir o histórico de conversas.
+    # chat_container = st.container()
+
+    # # Função para renderizar as mensagens no container
+    # def renderiza_chat():
+    #     chat_container.empty()  # Limpa o container antes de re-renderizar
+    #     for mensagem in mensagens:
+    #         # Aqui usamos 'role' (certifique-se de que todas as mensagens usem a mesma chave)
+    #         if mensagem['role'] == 'user':
+    #             st.chat_message(mensagem['role']).markdown(
+    #                 f'<div class="user-message">{mensagem["content"]}</div>',
+    #                 unsafe_allow_html=True
+    #             )
+    #         else:
+    #             st.chat_message(mensagem['role']).markdown(
+    #                 f'<div class="assistant-message">{mensagem["content"]}</div>',
+    #                 unsafe_allow_html=True
+    #             )
+
+    # # Renderiza o histórico inicial
+    # renderiza_chat()
+
+    # # Área de entrada (rodapé) – ficará fixa na parte inferior da tela.
+    # with st.container(key='footer'):
+    #     prompt = st.chat_input('Fale com o tutor')
+
+    #     options_pills = ["⌨️", "🎤", "📽️"]
+
+    #     seleciona_midia = st.pills(
+    #         "Selecione a Mídia",
+    #         options_pills,
+    #         selection_mode="single",
+    #         key='input-select',
+    #         label_visibility="hidden"
+    #     )
+
+    #     st.session_state['input'] = seleciona_midia
+    #     js_debug(st.session_state['input'])
+
+    #     # Verificar a seleção para abrir o diálogo correspondente
+    #     if st.session_state['input'] == "⌨️":
+    #         js_debug("reinicia o modal")
+    #         st.session_state['show_modal'] = True
+    #         st.session_state['transcricao'] = ''
+    #     elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+    #         js_debug("transcreve_audio_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_audio_recebido()
+    #     elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+    #         js_debug("transcreve_video_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_video_recebido()
+
+    #     st.markdown(
+    #         '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._'
+    #     )
+
+    #     # Processa a requisição se houver entrada
+    #     if prompt:
+    #         renderiza_chat()
+    #         if st.session_state['api_key'] == '':
+    #             st.error('Adicione uma chave de API na aba de configurações')
+    #         else:
+    #             # Chama a função que envia a mensagem e obtém a resposta,
+    #             # passando o container de chat para atualização
+    #             nova_mensagem(prompt, mensagens, True, chat_container)
+    #             # Atualiza o histórico (mensagens pode ter sido modificado pela nova mensagem)
+    #             renderiza_chat()
+
+    # placeholder = st.empty()
+
+    # for mensagem in mensagens:
+    #     if mensagem['role'] == 'user':
+    #         chat = st.chat_message(mensagem['role'])
+    #         chat.markdown(
+    #             f'<div class="user-message">{mensagem["content"]}</div>', unsafe_allow_html=True)
+    #     else:
+    #         chat = st.chat_message(mensagem['role'])
+    #         chat.markdown(
+    #             f'<div class="assistant-message">{mensagem["content"]}</div>', unsafe_allow_html=True)
+
+    # with st.container(key='footer'):
+    #     prompt = st.chat_input('Fale com o tutor')
+
+    #     options_pills = ["⌨️", "🎤", "📽️"]
+
+    #     seleciona_midia = st.pills(
+    #         "Selecione a Mídia",
+    #         options_pills,
+    #         selection_mode="single",
+    #         key='input-select',
+    #         label_visibility="hidden"
+    #     )
+
+    #     st.session_state['input'] = seleciona_midia
+
+    #     js_debug(st.session_state['input'])
+
+    #     # Verificar a seleção para abrir o diálogo correspondente
+    #     if st.session_state['input'] == "⌨️":
+    #         js_debug("reinicia o modal")
+    #         # reseta
+    #         st.session_state['show_modal'] = True
+    #         st.session_state['transcricao'] = ''
+    #     elif st.session_state['input'] == "🎤" and st.session_state['show_modal']:
+    #         js_debug("transcreve_audio_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_audio_recebido()
+    #     elif st.session_state['input'] == "📽️" and st.session_state['show_modal']:
+    #         js_debug("transcreve_video_recebido()")
+    #         st.session_state['input'] = "⌨️"
+    #         transcreve_video_recebido()
+
+    #     st.markdown(
+    #         '_O Chat de Conversas pode cometer erros. Considere verificar informações importantes._')
+
+    #     # Faz a requisição, se houver
+    #     if prompt:
+    #         if st.session_state['api_key'] == '':
+    #             st.error('Adicone uma chave de api na aba de configurações')
+    #         else:
+    #             nova_mensagem(prompt, mensagens, True, placeholder)
 
 
 # Página de Configurações =========================
@@ -941,6 +1609,7 @@ def config_page() -> None:
         st.session_state['retrieval_search_type'] = retrieval_search_type
         st.session_state['retrieval_kwargs'] = retrieval_kwargs
         st.session_state['prompt'] = prompt
+        st.info('Parâmetros salvos com sucesso!')
         st.rerun()
 
     if st.button('Atualizar o ATI', use_container_width=True):
@@ -992,11 +1661,208 @@ def pg_tutoria() -> None:
             chat = container.chat_message('human')
             chat.markdown(nova_mensagem)
             chat = container.chat_message('ai')
-            chat.markdown('▌ ')  # Gerando resposta
+            # chat.markdown('▌ ')  # Gerando resposta
+            chat.markdown("<span>▌</span>", unsafe_allow_html=True)
 
             resposta = chain.invoke({'question': nova_mensagem})
             st.session_state['ultima_resposta'] = resposta
             st.rerun()
+
+
+# Página de Tutoria =========================
+
+# def pg_tutoria() -> None:
+#     """
+#     Exibe a página de tutoria do chatbot, permitindo interações com documentos previamente carregados.
+
+#     Operações:
+#     \n\t- Exibe um cabeçalho e um aviso se nenhum documento for carregado.
+#     \n\t- Recupera o histórico de conversas do chatbot e exibe as mensagens.
+#     \n\t- Permite ao usuário interagir com o chatbot enviando novas mensagens.
+#     \n\t- Exibe respostas do chatbot com base nos documentos processados.
+
+#     Retorno:
+#     \n\t`None`: Apenas exibe a interface e processa as interações no Streamlit.
+
+#     Exemplo:
+#     >>> pg_tutoria()
+#     """
+#     # st.header('🎓 ATI - Agente Tutor Inteligente', divider=True)
+
+#     # if not 'chain' in st.session_state or st.session_state['chain'] == '':
+#     #     st.error('Faça o upload de PDFs para começar!')
+#     # else:
+#     #     chain = st.session_state['chain']
+#     st.header('🎓 ATI - Agente Tutor Inteligente', divider=True)
+
+#     if 'chain' not in st.session_state or not st.session_state['chain']:
+#         st.error('Faça o upload de PDFs para começar!')
+#         return
+
+#     chain = st.session_state['chain']
+#     memory = chain.memory
+#     # Carrega o histórico de conversas do LangChain
+#     mensagens = memory.load_memory_variables({})['chat_history']
+
+#     # Inicializa o histórico de mensagens, se ainda não estiver definido
+#     if 'mensagens' not in st.session_state:
+#         st.session_state['mensagens'] = mensagens
+
+#     # Container para exibir o histórico de mensagens
+#     # container = st.container()
+#     # for mensagem in mensagens:
+#     #     chat = container.chat_message(mensagem.type)
+#     #     chat.markdown(mensagem.content)
+
+#     # O campo de entrada do chat fica fixo no rodapé da página
+#     # nova_mensagem = st.chat_input(
+#     #     'Converse com o seu Agente Tutor Inteligente...')
+
+#     # Container para exibir o histórico de mensagens
+#     chat_container = st.container()
+#     with chat_container:
+#         for mensagem in st.session_state['mensagens']:
+#             # st.chat_message(mensagem.type).markdown(mensagem.content)
+#             st.chat_message(mensagem["type"]).markdown(mensagem["content"])
+
+#     # O campo de entrada do chat fica fixo no rodapé da página
+#     nova_mensagem = st.chat_input(
+#         'Converse com o seu Agente Tutor Inteligente...')
+
+#     # if nova_mensagem:
+#     #     chat = container.chat_message('human')
+#     #     chat.markdown(nova_mensagem)
+#     #     chat = container.chat_message('ai')
+#     #     chat.markdown('▌ ')  # Gerando resposta
+
+#     #     resposta = chain.invoke({'question': nova_mensagem})
+#     #     st.session_state['ultima_resposta'] = resposta
+#     #     st.rerun()
+
+#     if nova_mensagem:
+#         # Exibe a mensagem do usuário no container (acima do input)
+#         mensagem_usuario = {'type': 'human', 'content': nova_mensagem}
+#         st.session_state['mensagens'].append(mensagem_usuario)
+
+#         # Atualiza a mensagem enviada pelo usuário
+#         with chat_container:
+#             st.chat_message('human').markdown(nova_mensagem)
+
+#         # Cria um placeholder para a resposta do assistente (também no container)
+#         with chat_container:
+#             ai_placeholder = st.chat_message('ai').empty()
+#             ai_placeholder.markdown('▌')
+
+#         # Obtém a resposta do assistente
+#         resposta = chain.invoke({'question': nova_mensagem})
+#         resposta_texto = resposta.get('answer', 'Desculpe, ocorreu um erro.')
+
+#         # Atualiza o placeholder com a resposta final
+#         ai_placeholder.markdown(resposta_texto)
+
+#         # Armazena a resposta no histórico
+#         mensagem_ai = {'type': 'ai', 'content': resposta_texto}
+#         st.session_state['mensagens'].append(mensagem_ai)
+
+    """
+    Divisor
+    """
+    # st.header('🎓 ATI - Agente Tutor Inteligente', divider=True)
+
+    # if not 'chain' in st.session_state or st.session_state['chain'] == '':
+    #     st.error('Faça o upload de PDFs para começar!')
+    # else:
+    #     chain = st.session_state['chain']
+    #     memory = chain.memory
+
+    #     # Carrega o histórico de conversas do LangChain
+    #     mensagens = memory.load_memory_variables({})['chat_history']
+
+    #     container = st.container()
+    #     # Exibe todas as mensagens anteriores
+    #     for mensagem in mensagens:
+    #         chat = container.chat_message(mensagem.type)
+    #         chat.markdown(mensagem.content)
+
+    #     # Caixa de input do usuário
+    #     nova_mensagem = st.chat_input(
+    #         'Converse com o seu Agente Tutor Inteligente...'
+    #     )
+    #     if nova_mensagem:
+    #         # Exibe a mensagem do usuário imediatamente
+    #         chat_user = container.chat_message('human')
+    #         chat_user.markdown(nova_mensagem)
+
+    #         # Placeholder para a resposta do AI
+    #         chat_ai = container.chat_message('ai')
+    #         # chat.markdown('▌ ')  # Gerando resposta
+    #         placeholder = chat_ai.empty()
+    #         placeholder.markdown('▌')  # Pode deixar esse cursor, se quiser
+
+    #         # Invoca a chain para obter a resposta
+    #         resposta = chain.invoke({'question': nova_mensagem})
+
+    #         # Atualiza o placeholder com a resposta final
+    #         placeholder.markdown(resposta['answer'])
+
+    #         # Armazena a última resposta se for preciso
+    #         st.session_state['ultima_resposta'] = resposta
+
+    # A memória do LangChain atualiza automaticamente,
+    # mas, se precisar, você pode atualizar o st.session_state também.
+    # Se quiser exibir a conversa sem recarregar, basta não chamar st.rerun().
+    # Se precisar recarregar por algum outro motivo, chame st.rerun() aqui
+    # mas saiba que isso fará o app redesenhar tudo.
+
+    """
+    Exibe a página de tutoria do chatbot.
+    O histórico de mensagens é exibido em um container acima,
+    e o st.chat_input() permanece fixado no rodapé.
+    """
+    # st.header('🎓 ATI - Agente Tutor Inteligente', divider=True)
+
+    # if 'chain' not in st.session_state or not st.session_state['chain']:
+    #     st.error('Faça o upload de PDFs para começar!')
+    #     return
+
+    # chain = st.session_state['chain']
+
+    # # Inicializa o histórico de mensagens, se ainda não estiver definido
+    # if 'mensagens' not in st.session_state:
+    #     st.session_state['mensagens'] = chain.memory.load_memory_variables({})[
+    #         'chat_history']
+
+    # # Container para exibir o histórico de mensagens
+    # chat_container = st.container()
+    # with chat_container:
+    #     for mensagem in st.session_state['mensagens']:
+    #         st.chat_message(mensagem.type).markdown(mensagem.content)
+
+    # # O campo de entrada do chat fica fixo no rodapé da página
+    # nova_mensagem = st.chat_input(
+    #     'Converse com o seu Agente Tutor Inteligente...')
+    # if nova_mensagem:
+    #     # Exibe a mensagem do usuário no container (acima do input)
+    #     mensagem_usuario = {'type': 'human', 'content': nova_mensagem}
+    #     st.session_state['mensagens'].append(mensagem_usuario)
+    #     with chat_container:
+    #         st.chat_message('human').markdown(nova_mensagem)
+
+    #     # Cria um placeholder para a resposta do assistente (também no container)
+    #     with chat_container:
+    #         ai_placeholder = st.chat_message('ai').empty()
+    #         ai_placeholder.markdown('▌')
+
+    #     # Obtém a resposta do assistente
+    #     resposta = chain.invoke({'question': nova_mensagem})
+    #     resposta_texto = resposta.get('answer', 'Desculpe, ocorreu um erro.')
+
+    #     # Atualiza o placeholder com a resposta final
+    #     ai_placeholder.markdown(resposta_texto)
+
+    #     # Armazena a resposta no histórico
+    #     mensagem_ai = {'type': 'ai', 'content': resposta_texto}
+    #     st.session_state['mensagens'].append(mensagem_ai)
 
 
 # Página de Análise =========================
@@ -1043,3 +1909,16 @@ def pg_analise() -> None:
                 question=''
             )
             st.code(prompt)
+
+
+# body {
+#     margin: 0px;
+#     font-family: "Source Sans Pro", sans-serif;
+#     font-weight: 400;
+#     line-height: 1.6;
+#     color: rgb(49, 51, 63);
+#     background-color: rgb(255, 255, 255);
+#     text-size-adjust: 100%;
+#     -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+#     -webkit-font-smoothing: auto;
+# }

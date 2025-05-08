@@ -9,6 +9,12 @@ import streamlit.components.v1 as components
 # Estilos CSS para personalizar a interface
 css_styles = '''
         <style>
+            /* Define a animação de piscar (blink) */
+            @keyframes blink {
+                50% {
+                    opacity: 0;
+                }
+            }
             /* Cor de fundo da aplicação */
             .stApp { background-color: #000000 !important; color: #ffffff !important; }
             /* Cor de fundo da barra lateral */
@@ -45,6 +51,8 @@ css_styles = '''
                 text-indent: 1px;
                 text-overlow: '';
                 }
+            /* Cor do cursor no campo texto */
+            .st-e3, .st-dy { caret-color: rgb(255, 75, 75); }
             /* Cor dos Selects*/
             .stTooltipHoverTarget > div > div, .st-dv, ul, li {color: color: rgb(250, 250, 250); border-color: rgb(14,17,23); background-color: rgb(14,17,23) !important;}
             li[role=\"option\"] {background-color: rgb(14,17,23) !important;}
@@ -73,6 +81,14 @@ css_styles = '''
                 margin-right: 1rem;
             }
 
+            /* Aplica a animação à span dentro de .assistant-message */
+            .assistant-message > span, .div[aria-label=\"Chat message from ai\"] > div > div > div > div > div > div > span {
+                animation: blink 1s steps(1, start) infinite;
+                /* Dicas de renderização de fonte (opcionais) */
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
             div[data-testid=\"stChatMessageAvatarUser\"] {background-color: rgb(108, 10, 10); }
             div[data-testid=\"stChatMessageAvatarAssistant\"] {background-color: rgb(10, 108, 10); }
             /* .stChatMessage:nth-child(odd) {background-color: rgba(240, 242, 246, 0.1);} */
@@ -91,15 +107,17 @@ css_styles = '''
             .st-key-footer {
                 position: fixed;
                 bottom: 0;
-                max-width: auto;
+                width: auto;
+                max-height: 8rem;
                 margin: 0 0 5rem;
                 border-radius: 10px;
                 margin-bottom: 10px;
                 display: flex;
                 flex-direction: column;
                 gap: 0px;
-                background-color: rgba(155, 155, 155, 0.1);
+                background-color: #1e1e1e;
                 padding: 1rem;
+                z-index: 10;
             }
 
             .st-key-input {
